@@ -57,7 +57,7 @@ if menu == "Dashboard Analisa":
             
             # Sesuaikan daftar ini dengan nama kolom DI DATABASE SUPABASE Anda:
             # Asumsi nama kolom: year (kecil), Month, Area, Product, Amount in Local Currency
-            columns_to_fetch = 'year, Month, Area, Product, "Amount in Local Currency", "Cust. Name", "Material Group"'
+            columns_to_fetch = 'year, month, area, product, "amount_in_local_currency", "cust_name", "material_group"'
             
             # Kita turunkan limit sedikit ke 75.000 agar aman, tapi spesifik kolomnya
             limit_rows = 75000 
