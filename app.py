@@ -4,8 +4,8 @@ from supabase import create_client
 import plotly.express as px
 
 # 1. Koneksi ke Database (Gunakan Secrets untuk keamanan nanti)
-url = st.secrets["https://fueiacoqhgyzrimtponm.supabase.co"]
-key = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1ZWlhY29xaGd5enJpbXRwb25tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MzM0MzMsImV4cCI6MjA4MTAwOTQzM30.rSocn0kbLii28bs9KtOGZujNY6yTQwHE2UuuLyITQDI"]
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
 supabase = create_client(url, key)
 
 st.set_page_config(page_title="Sales Dashboard Pro", layout="wide")
