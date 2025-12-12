@@ -29,66 +29,94 @@ menu = st.sidebar.selectbox("Pilih Menu", ["Dashboard Analisa", "Upload Data Bul
 # 3. MENU 1: DASHBOARD ANALISA
 # -----------------------------------------------------------------------------
 if menu == "Dashboard Analisa":
-    st.title("📊 Real-time Sales Analytics")
+    st.title("📊 Laporan Pivot Table Sales")
 
     # A. FETCH DATA
-    # Mengambil data dari Supabase
-    with st.spinner("Sedang memuat data dari cloud..."):
+    with st.spinner("Sedang memuat data..."):
         try:
-            # Kita ambil semua kolom
+            # Ambil semua data
             response = supabase.table(TABLE_NAME).select("*").execute()
             df = pd.DataFrame(response.data)
         except Exception as e:
-            st.error(f"Terjadi kesalahan saat mengambil data: {e}")
+            st.error(f"Error koneksi: {e}")
             st.stop()
 
-    # B. DATA CLEANING (PENTING: Mencegah Error KeyError)
+    # B. DATA CLEANING
     if df.empty:
-        st.warning("Data kosong. Silakan upload data terlebih dahulu.")
+        st.warning("Belum ada data.")
     else:
-        # Ubah semua nama kolom jadi huruf kecil & ganti spasi dengan underscore
-        # Contoh: "Amount in Local Currency" -> "amount_in_local_currency"
+        # 1. Standarisasi nama kolom (Huruf kecil & underscore)
         df.columns = [col.lower().replace(" ", "_").replace("-", "_") for col in df.columns]
 
-        # Tentukan kolom target (sesuaikan dengan hasil cleaning di atas)
-        # Kita cari kolom yang mengandung kata 'amount' dan 'area'
-        col_amount = 'amount_in_local_currency' # Default target
-        col_area = 'area'                       # Default target
-
-        # Cek apakah kolom benar-benar ada
-        if col_amount not in df.columns:
-            # Coba cari alternatif jika nama kolomnya beda
-            cols_found = [c for c in df.columns if 'amount' in c]
-            if cols_found: col_amount = cols_found[0]
-        
-        # C. KPI METRICS
+        # 2. Pastikan kolom angka berformat numerik
+        col_amount = 'amount_in_local_currency' # Sesuaikan nama kolom amount Anda
         if col_amount in df.columns:
-            total_sales = df[col_amount].sum()
-            total_trx = len(df)
-            
-            c1, c2 = st.columns(2)
-            c1.metric("Total Revenue", f"Rp {total_sales:,.0f}")
-            c2.metric("Total Transaksi", f"{total_trx} Baris")
-            
-            st.markdown("---")
+            df[col_amount] = pd.to_numeric(df[col_amount], errors='coerce').fillna(0)
 
-            # D. VISUALISASI
-            # Pastikan kolom Area ada
-            if col_area in df.columns:
-                # Grouping Data
-                df_grouped = df.groupby(col_area)[col_amount].sum().reset_index()
-                
-                # Plot Bar Chart
-                st.subheader("Performa Penjualan per Area")
-                # Perhatikan: x dan y menggunakan nama variabel yang sudah pasti benar
-                fig = px.bar(df_grouped, x=col_area, y=col_amount, 
-                             color=col_area, title="Total Sales by Area")
-                st.plotly_chart(fig, use_container_width=True)
+        # -----------------------------------------------------------
+        # C. PENGATURAN PIVOT TABLE (INTERAKTIF)
+        # -----------------------------------------------------------
+        st.subheader("⚙️ Konfigurasi Tabel")
+        
+        # Pilihan untuk Baris dan Kolom Pivot
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            # Mau dikelompokkan berdasarkan apa barisnya? (Area / Product / Customer)
+            row_option = st.selectbox("Pilih Baris (Rows):", ["area", "product", "cust_name"], index=0)
+        with c2:
+            # Mau dikelompokkan berdasarkan apa kolomnya? (Month / Year)
+            col_option = st.selectbox("Pilih Kolom (Columns):", ["year", "month", "material_group"], index=0)
+        with c3:
+            # Filter Tahun (Agar tabel tidak kepanjangan)
+            if 'year' in df.columns:
+                years = sorted(df['year'].unique())
+                selected_year = st.selectbox("Filter Tahun:", years, index=len(years)-1) # Default tahun terakhir
+                df_filtered = df[df['year'] == selected_year]
             else:
-                st.error(f"Kolom '{col_area}' tidak ditemukan. Nama kolom yang ada: {df.columns.tolist()}")
-        else:
-            st.error(f"Kolom Amount tidak ditemukan. Nama kolom yang ada: {df.columns.tolist()}")
+                df_filtered = df
 
+        st.markdown("---")
+
+        # -----------------------------------------------------------
+        # D. MEMBUAT PIVOT TABLE
+        # -----------------------------------------------------------
+        if col_amount in df_filtered.columns and row_option in df_filtered.columns:
+            
+            # Membuat Pivot Table Pandas
+            pivot_table = pd.pivot_table(
+                df_filtered,
+                index=[row_option],          # Baris
+                columns=[col_option],        # Kolom
+                values=col_amount,           # Nilai yang dihitung
+                aggfunc='sum',               # Dijumlahkan (Sum)
+                fill_value=0,                # Jika kosong isi 0
+                margins=True,                # Tampilkan Grand Total
+                margins_name="Grand Total"
+            )
+
+            # Sorting: Urutkan dari penjualan tertinggi (berdasarkan Grand Total)
+            pivot_table = pivot_table.sort_values(by="Grand Total", ascending=False)
+
+            # Tampilkan Judul
+            st.subheader(f"Laporan Penjualan: {row_option.upper()} vs {col_option.upper()}")
+            
+            # TAMPILKAN TABEL DENGAN FORMAT (Highlight & Rupiah)
+            st.dataframe(
+                pivot_table.style.background_gradient(cmap="Blues", axis=None).format("Rp {:,.0f}"),
+                use_container_width=True,
+                height=500
+            )
+            
+            # Download Button (Fitur Wajib Dashboard Sales)
+            st.download_button(
+                label="📥 Download Pivot ke Excel",
+                data=pivot_table.to_csv().encode('utf-8'),
+                file_name='pivot_sales_report.csv',
+                mime='text/csv',
+            )
+            
+        else:
+            st.error("Kolom yang dipilih tidak ditemukan di database.")
 # -----------------------------------------------------------------------------
 # 4. MENU 2: UPLOAD DATA
 # -----------------------------------------------------------------------------
