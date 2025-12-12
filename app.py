@@ -62,7 +62,7 @@ if menu == "Dashboard Analisa":
                 response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).execute()
             except:
                 # Fallback: Jika gagal, coba ambil Amount dengan spasi (nama lama)
-                alt_cols = 'year, month, area, product, "Amount in Local Currency", "Cust. Name", material_group, material_type'
+                alt_cols = 'year, month, area, product, amount_in_local_currency, cust_name, material_group, material_type, business_area'
                 response = supabase.table(TABLE_NAME).select(alt_cols).in_("year", selected_years).execute()
             
             df = pd.DataFrame(response.data)
