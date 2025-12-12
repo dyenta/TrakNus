@@ -38,5 +38,5 @@ elif menu == "Upload Data Bulanan":
         if st.button("Konfirmasi Simpan ke Cloud"):
             # Proses kirim ke Supabase
             data_dict = df_update.to_dict(orient='records')
-            supabase.table("sales_data").insert(data_dict).execute()
+            supabase.table("MASTER").insert(data_dict).execute()
             st.success("Data Berhasil Ditambahkan!")
