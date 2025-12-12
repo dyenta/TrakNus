@@ -47,33 +47,42 @@ if menu == "Dashboard Analisa":
         st.stop()
 
 # -----------------------------------------------------------
-    # B. FETCH DATA DARI SUPABASE (PERBAIKAN: HURUF KECIL & LIMIT BESAR)
+    # B. FETCH DATA DARI SUPABASE (SOLUSI TIMEOUT: PILIH KOLOM PENTING SAJA)
     # -----------------------------------------------------------
-    with st.spinner(f"Sedang mengambil data tahun {selected_years} (Maks 100.000 baris)..."):
+    with st.spinner(f"Sedang mengambil data tahun {selected_years}..."):
         try:
-            limit_rows = 100000 # Paksa ambil banyak data agar semua bulan muncul
-
-            # PERBAIKAN DI SINI:
-            # 1. Gunakan .in_("year", ...) -> Huruf 'y' kecil sesuai pesan error Supabase
-            # 2. Gunakan .select("*") -> Ambil semua kolom agar aman, tidak perlu tebak nama kolom lain
-            # 3. Gunakan .limit(limit_rows) -> Agar bulan 1-12 terambil semua
+            # PENTING: Jangan gunakan select("*") agar tidak timeout.
+            # Kita hanya ambil kolom yang diperlukan untuk Pivot & Filter.
+            # Perhatikan: Gunakan tanda kutip dua (") jika nama kolom ada spasi.
             
-            response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).limit(limit_rows).execute()
+            # Sesuaikan daftar ini dengan nama kolom DI DATABASE SUPABASE Anda:
+            # Asumsi nama kolom: year (kecil), Month, Area, Product, Amount in Local Currency
+            columns_to_fetch = 'year, Month, Area, Product, "Amount in Local Currency", "Cust. Name", "Material Group"'
+            
+            # Kita turunkan limit sedikit ke 75.000 agar aman, tapi spesifik kolomnya
+            limit_rows = 75000 
+
+            try:
+                # Coba ambil dengan kolom spesifik
+                response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).limit(limit_rows).execute()
+            except Exception as e_inner:
+                # Jika gagal (mungkin salah nama kolom), fallback ke select * tapi limit KECIL
+                st.warning(f"Gagal ambil kolom spesifik ({e_inner}), mencoba ambil semua kolom dengan limit lebih kecil...")
+                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).limit(20000).execute()
             
             df = pd.DataFrame(response.data)
 
-            # Cek apakah data kosong
+            # Cek Data
             if df.empty:
-                st.warning(f"Data kosong untuk tahun {selected_years}. Cek apakah data tahun tersebut sudah di-upload?")
+                st.warning(f"Data kosong untuk tahun {selected_years}.")
                 st.stop()
-                
-            # Cek apakah data mentok limit
+            
             if len(df) >= limit_rows:
-                st.warning(f"⚠️ PERINGATAN: Data mencapai batas {limit_rows} baris! Sebagian data mungkin terpotong.")
+                st.warning(f"⚠️ Data mencapai batas {limit_rows}. Sebagian bulan mungkin terpotong. Sarankan persempit filter tahun.")
 
         except Exception as e:
-            # Tampilkan error lengkap jika masih gagal
-            st.error(f"Gagal mengambil data: {e}")
+            st.error("Terjadi kesalahan. Pastikan nama kolom di variabel 'columns_to_fetch' SAMA PERSIS dengan di Supabase.")
+            st.error(f"Detail Error: {e}")
             st.stop()
 
     # -----------------------------------------------------------
