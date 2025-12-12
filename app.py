@@ -29,43 +29,35 @@ menu = st.sidebar.selectbox("Pilih Menu", ["Dashboard Analisa", "Upload Data Bul
 # 3. MENU 1: DASHBOARD ANALISA
 # -----------------------------------------------------------------------------
 if menu == "Dashboard Analisa":
-    st.title("📊 Laporan Pivot Table Sales (Multi-Tahun)")
+    st.title("📊 Laporan Pivot Table Sales (Multi-Filter)")
 
     # -----------------------------------------------------------
-    # A. FILTER TAHUN (MULTIPLE SELECT)
+    # A. FILTER UTAMA (DATABASE LEVEL)
     # -----------------------------------------------------------
-    # Daftar tahun yang tersedia
-    pilihan_tahun = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
-    
     st.sidebar.markdown("---")
-    st.sidebar.header("Filter Utama")
+    st.sidebar.header("1. Filter Wajib")
     
-    # Ganti selectbox jadi multiselect
-    # Default kita pilih tahun terakhir agar tidak kosong saat pertama buka
+    # Filter Tahun (Tetap ambil dari server agar ringan)
+    pilihan_tahun = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
     selected_years = st.sidebar.multiselect(
-        "Pilih Tahun Data (Bisa lebih dari satu):", 
+        "Pilih Tahun:", 
         options=pilihan_tahun, 
-        default=[2024] 
+        default=[2024]
     )
 
-    # Validasi: Jika user menghapus semua pilihan
     if not selected_years:
-        st.warning("⚠️ Silakan pilih minimal satu tahun di Sidebar sebelah kiri.")
-        st.stop() # Hentikan program sampai user memilih tahun
+        st.warning("⚠️ Harap pilih minimal satu tahun.")
+        st.stop()
 
     # -----------------------------------------------------------
-    # B. FETCH DATA (MENGGUNAKAN LOGIKA "IN")
+    # B. FETCH DATA DARI SUPABASE
     # -----------------------------------------------------------
-    with st.spinner(f"Sedang mengambil data tahun {selected_years}..."):
+    with st.spinner(f"Mengambil data tahun {selected_years}..."):
         try:
-            # LOGIKA QUERY BARU: Menggunakan .in_() untuk banyak nilai
-            # Artinya: "Ambil data DIMANA Tahun ADA DI DALAM list [2023, 2024]"
-            
+            # Menggunakan .in_() untuk mengambil banyak tahun sekaligus
             try:
-                # Coba cari kolom 'Year' (Huruf Besar)
                 response = supabase.table(TABLE_NAME).select("*").in_("Year", selected_years).execute()
             except:
-                # Jika error, coba cari kolom 'year' (Huruf Kecil)
                 response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).execute()
             
             df = pd.DataFrame(response.data)
@@ -75,53 +67,85 @@ if menu == "Dashboard Analisa":
             st.stop()
 
     # -----------------------------------------------------------
-    # C. DATA CLEANING & PIVOT
+    # C. DATA CLEANING & PREPARATION
     # -----------------------------------------------------------
     if df.empty:
-        st.warning(f"Data untuk tahun {selected_years} tidak ditemukan di database.")
+        st.warning("Data tidak ditemukan untuk tahun tersebut.")
     else:
-        st.success(f"✅ Data dimuat: {len(df)} baris (Tahun: {', '.join(map(str, selected_years))})")
-        
         # 1. Bersihkan Nama Kolom (Huruf kecil & underscore)
         df.columns = [col.lower().replace(" ", "_").replace("-", "_") for col in df.columns]
 
-        # 2. Pastikan kolom Amount jadi angka
+        # 2. Format Kolom Angka (Amount)
         col_amount = 'amount_in_local_currency'
         if col_amount not in df.columns:
             cols = [c for c in df.columns if 'amount' in c]
             if cols: col_amount = cols[0]
-
+        
         df[col_amount] = pd.to_numeric(df[col_amount], errors='coerce').fillna(0)
 
         # -----------------------------------------------------------
-        # D. PENGATURAN PIVOT
+        # D. FILTER TAMBAHAN (CLIENT SIDE - PANDAS)
         # -----------------------------------------------------------
-        st.subheader("⚙️ Atur Tampilan Pivot")
-        c1, c2 = st.columns(2)
-        with c1:
-            # Baris: Biasanya Area atau Produk
-            row_option = st.selectbox("Baris (Rows):", ["area", "product", "cust_name", "material_group"], index=0)
-        with c2:
-            # Kolom: Tambahkan 'year' agar bisa membandingkan antar tahun
-            # Default kita ubah jadi 'year' jika user memilih lebih dari 1 tahun
-            default_col = 0 if len(selected_years) == 1 else 2 # Index 2 asumsinya adalah 'year' (jika ada di list)
+        st.sidebar.header("2. Filter Detail")
+
+        # --- Filter Bulan ---
+        # Ambil daftar bulan yang tersedia di data yang sudah ditarik
+        if 'month' in df.columns:
+            available_months = sorted(df['month'].unique())
+            selected_months = st.sidebar.multiselect(
+                "Pilih Bulan:",
+                options=available_months,
+                default=available_months # Default terpilih semua
+            )
             
-            pilihan_kolom = ["month", "material_type", "year", "business_area"]
-            col_option = st.selectbox("Kolom (Columns):", pilihan_kolom, index=0)
+            # Terapkan Filter Bulan
+            if selected_months:
+                df = df[df['month'].isin(selected_months)]
+
+        # --- Filter Area ---
+        # Ambil daftar area yang tersedia di data
+        if 'area' in df.columns:
+            available_areas = sorted(df['area'].astype(str).unique())
+            selected_areas = st.sidebar.multiselect(
+                "Pilih Area:",
+                options=available_areas,
+                default=available_areas # Default terpilih semua
+            )
+
+            # Terapkan Filter Area
+            if selected_areas:
+                df = df[df['area'].isin(selected_areas)]
+
+        # Tampilkan Info Data setelah difilter
+        st.success(f"✅ Menampilkan {len(df)} transaksi.")
 
         # -----------------------------------------------------------
-        # E. RENDER PIVOT TABLE
+        # E. PENGATURAN & RENDER PIVOT
         # -----------------------------------------------------------
-        if col_amount in df.columns and row_option in df.columns:
-            
-            # Cek apakah kolom pivot tersedia
-            if col_option not in df.columns:
-                st.warning(f"Kolom '{col_option}' tidak ditemukan di data (Mungkin karena data tahun tertentu kosong).")
-            else:
+        if not df.empty:
+            st.subheader("⚙️ Atur Tampilan Pivot")
+            c1, c2 = st.columns(2)
+            with c1:
+                # Opsi Baris
+                row_options = [c for c in df.columns if c in ["area", "product", "cust_name", "material_group", "sales_office"]]
+                # Tambahkan fallback jika kolom tidak ditemukan
+                if not row_options: row_options = df.columns.tolist()
+                
+                row_val = st.selectbox("Baris (Rows):", row_options, index=0)
+
+            with c2:
+                # Opsi Kolom
+                col_options = ["month", "year", "material_type", "business_area"]
+                col_val = st.selectbox("Kolom (Columns):", col_options, index=0)
+
+            # Validasi Kolom Pivot
+            if row_val in df.columns and col_val in df.columns and col_amount in df.columns:
+                
+                # Buat Pivot Table
                 pivot = pd.pivot_table(
                     df,
-                    index=[row_option],
-                    columns=[col_option],
+                    index=[row_val],
+                    columns=[col_val],
                     values=col_amount,
                     aggfunc='sum',
                     fill_value=0,
@@ -129,10 +153,10 @@ if menu == "Dashboard Analisa":
                     margins_name="Grand Total"
                 )
                 
-                # Sort berdasarkan Grand Total terbesar
+                # Sorting descending berdasarkan Grand Total
                 pivot = pivot.sort_values(by="Grand Total", ascending=False)
 
-                st.subheader(f"Pivot: {row_option.upper()} vs {col_option.upper()}")
+                st.markdown(f"### Pivot: {row_val.upper()} vs {col_val.upper()}")
                 
                 # Tampilkan Tabel
                 st.dataframe(
@@ -141,15 +165,17 @@ if menu == "Dashboard Analisa":
                     height=500
                 )
                 
-                # Tombol Download
+                # Download Button
                 st.download_button(
                     "📥 Download CSV",
                     data=pivot.to_csv().encode('utf-8'),
-                    file_name=f'Sales_Pivot_{row_option}_vs_{col_option}.csv',
+                    file_name=f'Sales_Filter_Result.csv',
                     mime='text/csv'
                 )
+            else:
+                st.warning("Kolom yang dipilih tidak tersedia di data hasil filter.")
         else:
-            st.error(f"Kolom {row_option} atau {col_amount} tidak ditemukan setelah cleaning.")
+            st.warning("Data kosong setelah difilter. Coba kurangi filter area/bulan.")
 # -----------------------------------------------------------------------------
 # 4. MENU 2: UPLOAD DATA
 # -----------------------------------------------------------------------------
