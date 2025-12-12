@@ -25,9 +25,6 @@ TABLE_NAME = "MASTER"
 # -----------------------------------------------------------------------------
 menu = st.sidebar.selectbox("Pilih Menu", ["Dashboard Analisa", "Upload Data Bulanan"])
 
-# -----------------------------------------------------------------------------
-# 3. MENU 1: DASHBOARD ANALISA
-# -----------------------------------------------------------------------------
 if menu == "Dashboard Analisa":
     st.title("📊 Laporan Pivot Table Sales (Multi-Filter)")
 
@@ -49,42 +46,21 @@ if menu == "Dashboard Analisa":
         st.warning("⚠️ Harap pilih minimal satu tahun.")
         st.stop()
 
-# -----------------------------------------------------------
-    # B. FETCH DATA DARI SUPABASE (DENGAN LIMIT BESAR)
     # -----------------------------------------------------------
-    with st.spinner(f"Sedang mengambil data tahun {selected_years} (Maks 100.000 baris)..."):
+    # B. FETCH DATA DARI SUPABASE
+    # -----------------------------------------------------------
+    with st.spinner(f"Mengambil data tahun {selected_years}..."):
         try:
-            # OPTIMASI PENTING:
-            # 1. Kita gunakan .limit(100000) agar semua bulan terambil.
-            # 2. Kita SELECT nama kolom spesifik saja agar lebih RINGAN & CEPAT dibanding select("*")
-            #    (Ini mencegah error memori penuh di Streamlit Cloud)
-            
-            # Sesuaikan nama kolom di bawah ini dengan nama asli di Database Supabase Anda!
-            # Gunakan tanda kutip dua (") jika nama kolom mengandung spasi.
-            kolom_yang_diambil = 'Year, Month, Area, Product, Quantity, "Cust. Name", "Amount in Local Currency", "Material Group", "Material Type", "Business Area"'
-            
-            limit_rows = 1000000  # Kita minta 100rb baris
-
+            # Menggunakan .in_() untuk mengambil banyak tahun sekaligus
             try:
-                # Coba ambil dengan nama kolom 'Year' (Besar)
-                response = supabase.table(TABLE_NAME).select(kolom_yang_diambil).in_("Year", selected_years).limit(limit_rows).execute()
+                response = supabase.table(TABLE_NAME).select("*").in_("Year", selected_years).execute()
             except:
-                # Jika error, coba 'year' (Kecil)
-                response = supabase.table(TABLE_NAME).select(kolom_yang_diambil).in_("year", selected_years).limit(limit_rows).execute()
+                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).execute()
             
             df = pd.DataFrame(response.data)
 
-            # Cek apakah data kosong
-            if df.empty:
-                st.warning("Data kosong untuk tahun yang dipilih.")
-                st.stop()
-                
-            # Cek apakah data mentok limit
-            if len(df) >= limit_rows:
-                st.warning(f"⚠️ PERINGATAN: Data yang diambil mencapai batas {limit_rows} baris! Sebagian data akhir tahun mungkin terpotong. Harap persempit filter tahun.")
-
         except Exception as e:
-            st.error(f"Gagal mengambil data. Pastikan nama kolom di kodingan sama dengan di Supabase: {e}")
+            st.error(f"Gagal mengambil data: {e}")
             st.stop()
 
     # -----------------------------------------------------------
