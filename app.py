@@ -35,7 +35,7 @@ if menu == "Dashboard Analisa":
     with st.spinner("Sedang memuat data..."):
         try:
             # Ambil semua data
-            response = supabase.table(TABLE_NAME).select("*").execute()
+            response = supabase.table(TABLE_NAME).select("*").limit(1000000).execute()
             df = pd.DataFrame(response.data)
         except Exception as e:
             st.error(f"Error koneksi: {e}")
