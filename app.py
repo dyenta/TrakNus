@@ -57,18 +57,14 @@ if menu == "Dashboard Analisa":
             
             # Sesuaikan daftar ini dengan nama kolom DI DATABASE SUPABASE Anda:
             # Asumsi nama kolom: year (kecil), Month, Area, Product, Amount in Local Currency
-            columns_to_fetch = 'year, month, area, product, "amount_in_local_currency", "cust_name", "material_group"'
-            
-            # Kita turunkan limit sedikit ke 75.000 agar aman, tapi spesifik kolomnya
-            limit_rows = 1000000 
+            columns_to_fetch = 'year, month, area, business_area, "amount_in_local_currency", "cust_group", "key_account_type"'
 
             try:
                 # Coba ambil dengan kolom spesifik
-                response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).limit(limit_rows).execute()
+                response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).execute()
             except Exception as e_inner:
                 # Jika gagal (mungkin salah nama kolom), fallback ke select * tapi limit KECIL
-                st.warning(f"Gagal ambil kolom spesifik ({e_inner}), mencoba ambil semua kolom dengan limit lebih kecil...")
-                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).limit(20000).execute()
+                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).execute()
             
             df = pd.DataFrame(response.data)
 
@@ -77,9 +73,6 @@ if menu == "Dashboard Analisa":
                 st.warning(f"Data kosong untuk tahun {selected_years}.")
                 st.stop()
             
-            if len(df) >= limit_rows:
-                st.warning(f"⚠️ Data mencapai batas {limit_rows}. Sebagian bulan mungkin terpotong. Sarankan persempit filter tahun.")
-
         except Exception as e:
             st.error("Terjadi kesalahan. Pastikan nama kolom di variabel 'columns_to_fetch' SAMA PERSIS dengan di Supabase.")
             st.error(f"Detail Error: {e}")
@@ -135,9 +128,6 @@ if menu == "Dashboard Analisa":
             if selected_areas:
                 df = df[df['area'].isin(selected_areas)]
 
-        # Tampilkan Info Data setelah difilter
-        st.success(f"✅ Menampilkan {len(df)} transaksi.")
-
         # -----------------------------------------------------------
         # E. PENGATURAN & RENDER PIVOT
         # -----------------------------------------------------------
@@ -146,7 +136,7 @@ if menu == "Dashboard Analisa":
             c1, c2 = st.columns(2)
             with c1:
                 # Opsi Baris
-                row_options = [c for c in df.columns if c in ["area", "product", "cust_name", "material_group", "sales_office"]]
+                row_options = [c for c in df.columns if c in ["key_account_type", "cust_group", "business_area"]]
                 # Tambahkan fallback jika kolom tidak ditemukan
                 if not row_options: row_options = df.columns.tolist()
                 
@@ -154,7 +144,7 @@ if menu == "Dashboard Analisa":
 
             with c2:
                 # Opsi Kolom
-                col_options = ["month", "year", "material_type", "business_area"]
+                col_options = ["month", "year"]
                 col_val = st.selectbox("Kolom (Columns):", col_options, index=0)
 
             # Validasi Kolom Pivot
