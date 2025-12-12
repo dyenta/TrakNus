@@ -56,7 +56,7 @@ if menu == "Dashboard Analisa":
         try:
             # PERUBAHAN PENTING ADA DI SINI (.limit)
             # Kita minta 50.000 baris agar semua bulan terambil
-            limit_rows = 50000 
+            limit_rows = 1000000 
             
             try:
                 # Perhatikan tambahan .limit(limit_rows) di belakang
