@@ -46,20 +46,33 @@ if menu == "Dashboard Analisa":
         st.warning("⚠️ Harap pilih minimal satu tahun.")
         st.stop()
 
+# -----------------------------------------------------------
+    # B. FETCH DATA DARI SUPABASE (PERBAIKAN: HURUF KECIL & LIMIT BESAR)
     # -----------------------------------------------------------
-    # B. FETCH DATA DARI SUPABASE
-    # -----------------------------------------------------------
-    with st.spinner(f"Mengambil data tahun {selected_years}..."):
+    with st.spinner(f"Sedang mengambil data tahun {selected_years} (Maks 100.000 baris)..."):
         try:
-            # Menggunakan .in_() untuk mengambil banyak tahun sekaligus
-            try:
-                response = supabase.table(TABLE_NAME).select("*").in_("Year", selected_years).execute()
-            except:
-                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).execute()
+            limit_rows = 100000 # Paksa ambil banyak data agar semua bulan muncul
+
+            # PERBAIKAN DI SINI:
+            # 1. Gunakan .in_("year", ...) -> Huruf 'y' kecil sesuai pesan error Supabase
+            # 2. Gunakan .select("*") -> Ambil semua kolom agar aman, tidak perlu tebak nama kolom lain
+            # 3. Gunakan .limit(limit_rows) -> Agar bulan 1-12 terambil semua
+            
+            response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).limit(limit_rows).execute()
             
             df = pd.DataFrame(response.data)
 
+            # Cek apakah data kosong
+            if df.empty:
+                st.warning(f"Data kosong untuk tahun {selected_years}. Cek apakah data tahun tersebut sudah di-upload?")
+                st.stop()
+                
+            # Cek apakah data mentok limit
+            if len(df) >= limit_rows:
+                st.warning(f"⚠️ PERINGATAN: Data mencapai batas {limit_rows} baris! Sebagian data mungkin terpotong.")
+
         except Exception as e:
+            # Tampilkan error lengkap jika masih gagal
             st.error(f"Gagal mengambil data: {e}")
             st.stop()
 
