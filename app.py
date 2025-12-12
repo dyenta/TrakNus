@@ -8,7 +8,7 @@ from supabase import create_client
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Sales Dashboard Pro", layout="wide")
 
-# Mengambil secrets (Pastikan file .streamlit/secrets.toml sudah benar)
+# Mengambil secrets
 try:
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
@@ -17,7 +17,7 @@ except Exception as e:
     st.error("Gagal koneksi ke Database. Cek file secrets.toml Anda.")
     st.stop()
 
-# Nama Tabel di Supabase Anda (Sesuai kode terakhir Anda)
+# Nama Tabel di Supabase
 TABLE_NAME = "MASTER"
 
 # -----------------------------------------------------------------------------
@@ -25,16 +25,18 @@ TABLE_NAME = "MASTER"
 # -----------------------------------------------------------------------------
 menu = st.sidebar.selectbox("Pilih Menu", ["Dashboard Analisa", "Upload Data Bulanan"])
 
+# -----------------------------------------------------------------------------
+# 3. MENU DASHBOARD
+# -----------------------------------------------------------------------------
 if menu == "Dashboard Analisa":
-    st.title("📊 Laporan Pivot Table Sales (Multi-Filter)")
+    st.title("📊 Laporan Pivot Table (Full Custom)")
 
     # -----------------------------------------------------------
-    # A. FILTER UTAMA (DATABASE LEVEL)
+    # A. FILTER TAHUN (SERVER SIDE)
     # -----------------------------------------------------------
     st.sidebar.markdown("---")
-    st.sidebar.header("1. Filter Wajib")
+    st.sidebar.header("1. Filter Utama")
     
-    # Filter Tahun (Tetap ambil dari server agar ringan)
     pilihan_tahun = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
     selected_years = st.sidebar.multiselect(
         "Pilih Tahun:", 
@@ -46,177 +48,164 @@ if menu == "Dashboard Analisa":
         st.warning("⚠️ Harap pilih minimal satu tahun.")
         st.stop()
 
-# -----------------------------------------------------------
-    # B. FETCH DATA DARI SUPABASE (SOLUSI TIMEOUT: PILIH KOLOM PENTING SAJA)
     # -----------------------------------------------------------
-    with st.spinner(f"Sedang mengambil data tahun {selected_years}..."):
+    # B. FETCH DATA (Efisien & Aman)
+    # -----------------------------------------------------------
+    with st.spinner(f"Mengambil data tahun {selected_years}..."):
         try:
-            # PENTING: Jangan gunakan select("*") agar tidak timeout.
-            # Kita hanya ambil kolom yang diperlukan untuk Pivot & Filter.
-            # Perhatikan: Gunakan tanda kutip dua (") jika nama kolom ada spasi.
+            # Ambil kolom spesifik (Huruf Kecil) agar ringan & tidak timeout
+            # Pastikan nama kolom di bawah ini ada di Supabase Anda (sesuaikan jika beda)
+            columns_to_fetch = "year, month, area, product, amount_in_local_currency, cust_name, material_group, material_type, business_area"
             
-            # Sesuaikan daftar ini dengan nama kolom DI DATABASE SUPABASE Anda:
-            # Asumsi nama kolom: year (kecil), Month, Area, Product, Amount in Local Currency
-            columns_to_fetch = '"year", "month", "area", "business_area", "amount_in_local_currency", "cust_group", "key_account_type"'
+            limit_rows = 75000 
 
             try:
-                # Coba ambil dengan kolom spesifik
-                response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).execute()
-            except Exception as e_inner:
-                # Jika gagal (mungkin salah nama kolom), fallback ke select * tapi limit KECIL
-                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).execute()
+                # Coba ambil dengan nama kolom lowercase
+                response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).limit(limit_rows).execute()
+            except:
+                # Fallback: Jika gagal, coba ambil Amount dengan spasi (nama lama)
+                alt_cols = 'year, month, area, product, "Amount in Local Currency", "Cust. Name", material_group, material_type'
+                response = supabase.table(TABLE_NAME).select(alt_cols).in_("year", selected_years).limit(limit_rows).execute()
             
             df = pd.DataFrame(response.data)
 
-            # Cek Data
+            # Cek Data Kosong
             if df.empty:
-                st.warning(f"Data kosong untuk tahun {selected_years}.")
+                st.warning("Data tidak ditemukan.")
                 st.stop()
-            
+
         except Exception as e:
-            st.error("Terjadi kesalahan. Pastikan nama kolom di variabel 'columns_to_fetch' SAMA PERSIS dengan di Supabase.")
-            st.error(f"Detail Error: {e}")
+            st.error(f"Gagal mengambil data: {e}")
             st.stop()
 
     # -----------------------------------------------------------
-    # C. DATA CLEANING & PREPARATION
+    # C. DATA CLEANING
     # -----------------------------------------------------------
-    if df.empty:
-        st.warning("Data tidak ditemukan untuk tahun tersebut.")
-    else:
-        # 1. Bersihkan Nama Kolom (Huruf kecil & underscore)
-        df.columns = [col.lower().replace(" ", "_").replace("-", "_") for col in df.columns]
+    # 1. Bersihkan Nama Kolom (Huruf kecil & underscore)
+    df.columns = [col.lower().replace(" ", "_").replace("-", "_") for col in df.columns]
 
-        # 2. Format Kolom Angka (Amount)
-        col_amount = 'amount_in_local_currency'
-        if col_amount not in df.columns:
-            cols = [c for c in df.columns if 'amount' in c]
-            if cols: col_amount = cols[0]
+    # 2. Pastikan kolom Amount jadi angka
+    col_amount = 'amount_in_local_currency'
+    if col_amount not in df.columns:
+        # Cari alternatif otomatis
+        cols = [c for c in df.columns if 'amount' in c]
+        if cols: col_amount = cols[0]
+    
+    df[col_amount] = pd.to_numeric(df[col_amount], errors='coerce').fillna(0)
+
+    # -----------------------------------------------------------
+    # D. FILTER DETAIL (CLIENT SIDE)
+    # -----------------------------------------------------------
+    st.sidebar.header("2. Filter Detail")
+
+    # Filter Bulan
+    if 'month' in df.columns:
+        avail_months = sorted(df['month'].unique())
+        sel_months = st.sidebar.multiselect("Pilih Bulan:", avail_months, default=avail_months)
+        if sel_months: df = df[df['month'].isin(sel_months)]
+
+    # Filter Area
+    if 'area' in df.columns:
+        avail_areas = sorted(df['area'].astype(str).unique())
+        sel_areas = st.sidebar.multiselect("Pilih Area:", avail_areas, default=avail_areas)
+        if sel_areas: df = df[df['area'].isin(sel_areas)]
+
+    # Info Data
+    st.success(f"✅ Data Siap: {len(df)} Transaksi")
+
+    # -----------------------------------------------------------
+    # E. PIVOT TABLE (ROW & COLUMN BERTUMPUK)
+    # -----------------------------------------------------------
+    if not df.empty:
+        st.subheader("⚙️ Konfigurasi Pivot")
         
-        df[col_amount] = pd.to_numeric(df[col_amount], errors='coerce').fillna(0)
-
-        # -----------------------------------------------------------
-        # D. FILTER TAMBAHAN (CLIENT SIDE - PANDAS)
-        # -----------------------------------------------------------
-        st.sidebar.header("2. Filter Detail")
-
-        # --- Filter Bulan ---
-        # Ambil daftar bulan yang tersedia di data yang sudah ditarik
-        if 'month' in df.columns:
-            available_months = sorted(df['month'].unique())
-            selected_months = st.sidebar.multiselect(
-                "Pilih Bulan:",
-                options=available_months,
-                default=available_months # Default terpilih semua
+        # Daftar kolom yang bisa dijadikan dimensi
+        dims = [c for c in df.columns if c not in [col_amount, 'posting_date']]
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            # MULTI SELECT UNTUK BARIS (Row)
+            rows = st.multiselect(
+                "Pilih Baris (Bisa Bertumpuk):", 
+                options=dims, 
+                default=["area", "product"] # Default 2 level
             )
-            
-            # Terapkan Filter Bulan
-            if selected_months:
-                df = df[df['month'].isin(selected_months)]
-
-        # --- Filter Area ---
-        # Ambil daftar area yang tersedia di data
-        if 'area' in df.columns:
-            available_areas = sorted(df['area'].astype(str).unique())
-            selected_areas = st.sidebar.multiselect(
-                "Pilih Area:",
-                options=available_areas,
-                default=available_areas # Default terpilih semua
+        with c2:
+            # MULTI SELECT UNTUK KOLOM (Column) - INI YANG BARU
+            cols = st.multiselect(
+                "Pilih Kolom (Bisa Bertumpuk):", 
+                options=dims,
+                default=["year"] # Default 1 level
             )
 
-            # Terapkan Filter Area
-            if selected_areas:
-                df = df[df['area'].isin(selected_areas)]
-
-        # -----------------------------------------------------------
-        # E. PENGATURAN & RENDER PIVOT
-        # -----------------------------------------------------------
-        if not df.empty:
-            st.subheader("⚙️ Atur Tampilan Pivot")
-            c1, c2 = st.columns(2)
-            with c1:
-                # Opsi Baris
-                row_options = [c for c in df.columns if c in ["key_account_type", "cust_group", "business_area"]]
-                # Tambahkan fallback jika kolom tidak ditemukan
-                if not row_options: row_options = df.columns.tolist()
-                
-                row_val = st.selectbox("Baris (Rows):", row_options, index=0)
-
-            with c2:
-                # Opsi Kolom
-                col_options = ["month", "year"]
-                col_val = st.selectbox("Kolom (Columns):", col_options, index=0)
-
-            # Validasi Kolom Pivot
-            if row_val in df.columns and col_val in df.columns and col_amount in df.columns:
-                
-                # Buat Pivot Table
+        # Validasi Pivot
+        if not rows or not cols:
+            st.warning("⚠️ Harap pilih minimal satu Baris dan satu Kolom.")
+        else:
+            try:
+                # Membuat Pivot Table Multi-Index
                 pivot = pd.pivot_table(
                     df,
-                    index=[row_val],
-                    columns=[col_val],
+                    index=rows,       # List (Bertumpuk)
+                    columns=cols,     # List (Bertumpuk)
                     values=col_amount,
                     aggfunc='sum',
                     fill_value=0,
                     margins=True,
                     margins_name="Grand Total"
                 )
-                
-                # Sorting descending berdasarkan Grand Total
-                pivot = pivot.sort_values(by="Grand Total", ascending=False)
 
-                st.markdown(f"### Pivot: {row_val.upper()} vs {col_val.upper()}")
-                
-                # Tampilkan Tabel
+                # Sorting (Opsional, sort berdasarkan Grand Total Baris)
+                # Note: Sorting Multi-Column agak tricky, kita sort row-nya saja
+                pivot = pivot.sort_values(by=("Grand Total", ""), ascending=False) if ("Grand Total", "") in pivot.columns else pivot
+
+                # Judul Laporan
+                row_text = " > ".join([r.upper() for r in rows])
+                col_text = " > ".join([c.upper() for c in cols])
+                st.markdown(f"### 📑 Laporan: {row_text} vs {col_text}")
+
+                # TAMPILKAN TABEL
+                # Kita gunakan format rupiah sederhana
                 st.dataframe(
                     pivot.style.format("Rp {:,.0f}"), 
                     use_container_width=True, 
-                    height=500
+                    height=600
                 )
                 
-                # Download Button
+                # DOWNLOAD
                 st.download_button(
                     "📥 Download CSV",
                     data=pivot.to_csv().encode('utf-8'),
-                    file_name=f'Sales_Filter_Result.csv',
+                    file_name=f'Pivot_{"_".join(rows)}_vs_{"_".join(cols)}.csv',
                     mime='text/csv'
                 )
-            else:
-                st.warning("Kolom yang dipilih tidak tersedia di data hasil filter.")
-        else:
-            st.warning("Data kosong setelah difilter. Coba kurangi filter area/bulan.")
+
+            except Exception as e:
+                st.error(f"Gagal membuat pivot: {e}")
+                st.info("Tips: Jangan memilih kolom yang sama di Baris dan Kolom sekaligus.")
+
 # -----------------------------------------------------------------------------
-# 4. MENU 2: UPLOAD DATA
+# 4. MENU UPLOAD
 # -----------------------------------------------------------------------------
 elif menu == "Upload Data Bulanan":
     st.title("📂 Update Data Sales")
-    st.info("Fitur ini akan menambahkan data baru ke database tanpa menghapus data lama.")
+    st.info("Upload file Excel (transaksi baru) di sini.")
 
     file_baru = st.file_uploader("Pilih File Excel", type=["xlsx"])
 
     if file_baru:
         try:
-            df_update = pd.read_excel(file_baru)
-            st.write(f"✅ Berhasil membaca {len(df_update)} baris data baru.")
+            df_up = pd.read_excel(file_baru)
+            st.write(f"Mendeteksi {len(df_up)} baris baru.")
             
-            # Preview Data
-            st.dataframe(df_update.head())
-
             if st.button("Konfirmasi Simpan ke Cloud"):
-                with st.spinner("Sedang mengupload ke Supabase..."):
+                with st.spinner("Mengupload..."):
+                    # Bersihkan nama kolom sebelum upload
+                    df_up.columns = [c.lower().replace(" ", "_").replace("-", "_") for c in df_up.columns]
                     
-                    # 1. Bersihkan nama kolom Excel agar cocok dengan Database
-                    # (Agar "Amount in Local Currency" di Excel masuk ke "amount_in_local_currency" di DB)
-                    df_update.columns = [c.lower().replace(" ", "_").replace("-", "_") for c in df_update.columns]
-                    
-                    # 2. Konversi ke Dictionary
-                    data_dict = df_update.to_dict(orient='records')
-
-                    # 3. Insert ke Supabase
+                    data_dict = df_up.to_dict(orient='records')
                     supabase.table(TABLE_NAME).insert(data_dict).execute()
-                    
-                    st.success("🎉 Data Berhasil Ditambahkan! Silakan cek di menu Dashboard.")
+                    st.success("Berhasil disimpan!")
         
         except Exception as e:
-            st.error(f"Gagal memproses file: {e}")
-            st.warning("Pastikan nama kolom di Excel sama dengan yang ada di Database.")
+            st.error(f"Error: {e}")
