@@ -50,17 +50,25 @@ if menu == "Dashboard Analisa":
         st.stop()
 
     # -----------------------------------------------------------
-    # B. FETCH DATA DARI SUPABASE
+    # B. FETCH DATA DARI SUPABASE (DENGAN LIMIT LEBIH BESAR)
     # -----------------------------------------------------------
     with st.spinner(f"Mengambil data tahun {selected_years}..."):
         try:
-            # Menggunakan .in_() untuk mengambil banyak tahun sekaligus
+            # PERUBAHAN PENTING ADA DI SINI (.limit)
+            # Kita minta 50.000 baris agar semua bulan terambil
+            limit_rows = 50000 
+            
             try:
-                response = supabase.table(TABLE_NAME).select("*").in_("Year", selected_years).execute()
+                # Perhatikan tambahan .limit(limit_rows) di belakang
+                response = supabase.table(TABLE_NAME).select("*").in_("Year", selected_years).limit(limit_rows).execute()
             except:
-                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).execute()
+                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).limit(limit_rows).execute()
             
             df = pd.DataFrame(response.data)
+            
+            # Cek apakah data mentok di limit
+            if len(df) == limit_rows:
+                st.warning(f"⚠️ Peringatan: Data yang diambil mencapai batas maksimum ({limit_rows} baris). Mungkin ada data bulan lain yang terpotong.")
 
         except Exception as e:
             st.error(f"Gagal mengambil data: {e}")
