@@ -18,7 +18,7 @@ if menu == "Dashboard Analisa":
     
     # Ambil data agregat saja (agar ringan)
     # Contoh: Total sales per area
-    response = supabase.table("sales_data").select("Area, Amount in Local Currency").execute()
+    response = supabase.table("sales_data").select("Area, AmountinLocalCurrency").execute()
     df = pd.DataFrame(response.data)
     
     # Visualisasi
