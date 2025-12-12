@@ -60,7 +60,7 @@ if menu == "Dashboard Analisa":
             columns_to_fetch = 'year, month, area, product, "amount_in_local_currency", "cust_name", "material_group"'
             
             # Kita turunkan limit sedikit ke 75.000 agar aman, tapi spesifik kolomnya
-            limit_rows = 75000 
+            limit_rows = 1000000 
 
             try:
                 # Coba ambil dengan kolom spesifik
