@@ -56,16 +56,14 @@ if menu == "Dashboard Analisa":
             # Ambil kolom spesifik (Huruf Kecil) agar ringan & tidak timeout
             # Pastikan nama kolom di bawah ini ada di Supabase Anda (sesuaikan jika beda)
             columns_to_fetch = "year, month, area, product, amount_in_local_currency, cust_name, material_group, material_type, business_area"
-            
-            limit_rows = 75000 
 
             try:
                 # Coba ambil dengan nama kolom lowercase
-                response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).limit(limit_rows).execute()
+                response = supabase.table(TABLE_NAME).select(columns_to_fetch).in_("year", selected_years).execute()
             except:
                 # Fallback: Jika gagal, coba ambil Amount dengan spasi (nama lama)
                 alt_cols = 'year, month, area, product, "Amount in Local Currency", "Cust. Name", material_group, material_type'
-                response = supabase.table(TABLE_NAME).select(alt_cols).in_("year", selected_years).limit(limit_rows).execute()
+                response = supabase.table(TABLE_NAME).select(alt_cols).in_("year", selected_years).execute()
             
             df = pd.DataFrame(response.data)
 
