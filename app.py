@@ -29,103 +29,125 @@ menu = st.sidebar.selectbox("Pilih Menu", ["Dashboard Analisa", "Upload Data Bul
 # 3. MENU 1: DASHBOARD ANALISA
 # -----------------------------------------------------------------------------
 if menu == "Dashboard Analisa":
-    st.title("📊 Laporan Pivot Table Sales")
+    st.title("📊 Laporan Pivot Table Sales (Multi-Tahun)")
 
     # -----------------------------------------------------------
-    # A. FILTER TAHUN DI AWAL (Server-Side)
+    # A. FILTER TAHUN (MULTIPLE SELECT)
     # -----------------------------------------------------------
-    # Kita hardcode tahunnya agar aplikasi CEPAT (tidak perlu scan database dulu)
-    # Sesuaikan list ini dengan data yang Anda punya
+    # Daftar tahun yang tersedia
     pilihan_tahun = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
     
     st.sidebar.markdown("---")
     st.sidebar.header("Filter Utama")
-    selected_year = st.sidebar.selectbox("Pilih Tahun Data:", pilihan_tahun, index=len(pilihan_tahun)-1)
+    
+    # Ganti selectbox jadi multiselect
+    # Default kita pilih tahun terakhir agar tidak kosong saat pertama buka
+    selected_years = st.sidebar.multiselect(
+        "Pilih Tahun Data (Bisa lebih dari satu):", 
+        options=pilihan_tahun, 
+        default=[2024] 
+    )
+
+    # Validasi: Jika user menghapus semua pilihan
+    if not selected_years:
+        st.warning("⚠️ Silakan pilih minimal satu tahun di Sidebar sebelah kiri.")
+        st.stop() # Hentikan program sampai user memilih tahun
 
     # -----------------------------------------------------------
-    # B. FETCH DATA KHUSUS TAHUN TERSEBUT
+    # B. FETCH DATA (MENGGUNAKAN LOGIKA "IN")
     # -----------------------------------------------------------
-    with st.spinner(f"Sedang mengambil data tahun {selected_year} dari server..."):
+    with st.spinner(f"Sedang mengambil data tahun {selected_years}..."):
         try:
-            # LOGIKA BARU: Kita filter langsung di query database (.eq)
-            # Penting: Pastikan nama kolom tahun di Supabase Anda benar ("Year" atau "year")
-            # Kita coba dua kemungkinan agar tidak error
+            # LOGIKA QUERY BARU: Menggunakan .in_() untuk banyak nilai
+            # Artinya: "Ambil data DIMANA Tahun ADA DI DALAM list [2023, 2024]"
+            
             try:
                 # Coba cari kolom 'Year' (Huruf Besar)
-                response = supabase.table(TABLE_NAME).select("*").eq("Year", selected_year).execute()
+                response = supabase.table(TABLE_NAME).select("*").in_("Year", selected_years).execute()
             except:
                 # Jika error, coba cari kolom 'year' (Huruf Kecil)
-                response = supabase.table(TABLE_NAME).select("*").eq("year", selected_year).execute()
+                response = supabase.table(TABLE_NAME).select("*").in_("year", selected_years).execute()
             
             df = pd.DataFrame(response.data)
 
         except Exception as e:
             st.error(f"Gagal mengambil data: {e}")
-            st.warning("Tips: Pastikan kolom tahun di Supabase bernama 'Year' atau 'year'.")
             st.stop()
 
     # -----------------------------------------------------------
     # C. DATA CLEANING & PIVOT
     # -----------------------------------------------------------
     if df.empty:
-        st.warning(f"Data untuk tahun {selected_year} tidak ditemukan di database.")
+        st.warning(f"Data untuk tahun {selected_years} tidak ditemukan di database.")
     else:
-        st.success(f"Berhasil memuat {len(df)} transaksi tahun {selected_year}.")
+        st.success(f"✅ Data dimuat: {len(df)} baris (Tahun: {', '.join(map(str, selected_years))})")
         
         # 1. Bersihkan Nama Kolom (Huruf kecil & underscore)
         df.columns = [col.lower().replace(" ", "_").replace("-", "_") for col in df.columns]
 
         # 2. Pastikan kolom Amount jadi angka
-        # Deteksi otomatis nama kolom amount
         col_amount = 'amount_in_local_currency'
         if col_amount not in df.columns:
-             # Cari alternatif jika nama beda
             cols = [c for c in df.columns if 'amount' in c]
             if cols: col_amount = cols[0]
 
         df[col_amount] = pd.to_numeric(df[col_amount], errors='coerce').fillna(0)
 
-        # 3. Konfigurasi Pivot
+        # -----------------------------------------------------------
+        # D. PENGATURAN PIVOT
+        # -----------------------------------------------------------
         st.subheader("⚙️ Atur Tampilan Pivot")
         c1, c2 = st.columns(2)
         with c1:
+            # Baris: Biasanya Area atau Produk
             row_option = st.selectbox("Baris (Rows):", ["area", "product", "cust_name", "material_group"], index=0)
         with c2:
-            col_option = st.selectbox("Kolom (Columns):", ["month", "material_type"], index=0)
+            # Kolom: Tambahkan 'year' agar bisa membandingkan antar tahun
+            # Default kita ubah jadi 'year' jika user memilih lebih dari 1 tahun
+            default_col = 0 if len(selected_years) == 1 else 2 # Index 2 asumsinya adalah 'year' (jika ada di list)
+            
+            pilihan_kolom = ["month", "material_type", "year", "business_area"]
+            col_option = st.selectbox("Kolom (Columns):", pilihan_kolom, index=0)
 
-        # 4. Render Pivot Table
+        # -----------------------------------------------------------
+        # E. RENDER PIVOT TABLE
+        # -----------------------------------------------------------
         if col_amount in df.columns and row_option in df.columns:
-            pivot = pd.pivot_table(
-                df,
-                index=[row_option],
-                columns=[col_option],
-                values=col_amount,
-                aggfunc='sum',
-                fill_value=0,
-                margins=True,
-                margins_name="Grand Total"
-            )
             
-            # Sort berdasarkan Grand Total terbesar
-            pivot = pivot.sort_values(by="Grand Total", ascending=False)
+            # Cek apakah kolom pivot tersedia
+            if col_option not in df.columns:
+                st.warning(f"Kolom '{col_option}' tidak ditemukan di data (Mungkin karena data tahun tertentu kosong).")
+            else:
+                pivot = pd.pivot_table(
+                    df,
+                    index=[row_option],
+                    columns=[col_option],
+                    values=col_amount,
+                    aggfunc='sum',
+                    fill_value=0,
+                    margins=True,
+                    margins_name="Grand Total"
+                )
+                
+                # Sort berdasarkan Grand Total terbesar
+                pivot = pivot.sort_values(by="Grand Total", ascending=False)
 
-            # Tampilkan Tabel
-            st.subheader(f"Pivot: {row_option.upper()} vs {col_option.upper()} ({selected_year})")
-            
-            # Gunakan format rupiah sederhana tanpa gradient warna (agar tidak error matplotlib)
-            st.dataframe(
-                pivot.style.format("Rp {:,.0f}"), 
-                use_container_width=True, 
-                height=500
-            )
-            
-            # Tombol Download
-            st.download_button(
-                "📥 Download CSV",
-                data=pivot.to_csv().encode('utf-8'),
-                file_name=f'Sales_{selected_year}_{row_option}_vs_{col_option}.csv',
-                mime='text/csv'
-            )
+                st.subheader(f"Pivot: {row_option.upper()} vs {col_option.upper()}")
+                
+                # Tampilkan Tabel
+                st.dataframe(
+                    pivot.style.format("Rp {:,.0f}"), 
+                    use_container_width=True, 
+                    height=500
+                )
+                
+                # Tombol Download
+                st.download_button(
+                    "📥 Download CSV",
+                    data=pivot.to_csv().encode('utf-8'),
+                    file_name=f'Sales_Pivot_{row_option}_vs_{col_option}.csv',
+                    mime='text/csv'
+                )
         else:
             st.error(f"Kolom {row_option} atau {col_amount} tidak ditemukan setelah cleaning.")
 # -----------------------------------------------------------------------------
