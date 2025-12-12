@@ -57,7 +57,7 @@ if menu == "Dashboard Analisa":
             
             # Sesuaikan daftar ini dengan nama kolom DI DATABASE SUPABASE Anda:
             # Asumsi nama kolom: year (kecil), Month, Area, Product, Amount in Local Currency
-            columns_to_fetch = 'year, month, area, business_area, "amount_in_local_currency", "cust_group", "key_account_type"'
+            columns_to_fetch = '"year", "month", "area", "business_area", "amount_in_local_currency", "cust_group", "key_account_type"'
 
             try:
                 # Coba ambil dengan kolom spesifik
